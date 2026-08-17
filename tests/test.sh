@@ -6,22 +6,26 @@ MYSQL="mysql -h 127.0.0.1 -P 3306 -u root -proot --protocol=tcp -N -B"
 
 PASS=0
 FAIL=0
+TOTAL=14
 
 pass() {
-    echo "PASS: $1"
+    echo "✅ PASS: $1"
     PASS=$((PASS + 1))
 }
 
 fail() {
-    echo "FAIL: $1"
+    echo "❌ FAIL: $1"
     FAIL=$((FAIL + 1))
 }
 
 echo "=========================================="
-echo " STUDENT TABLE AUTOGRADER"
+echo " STUDENT TABLE - AUTO GRADING"
 echo "=========================================="
 
-# Test 1: CollegeDB exists
+# --------------------------------------------------
+# TEST 1 - CollegeDB
+# --------------------------------------------------
+
 DB_EXISTS=$($MYSQL -e "
 SELECT SCHEMA_NAME
 FROM INFORMATION_SCHEMA.SCHEMATA
@@ -29,17 +33,22 @@ WHERE SCHEMA_NAME='CollegeDB';
 ")
 
 if [ "$DB_EXISTS" = "CollegeDB" ]; then
-    pass "CollegeDB database exists"
+    pass "CollegeDB database created"
 else
-    fail "CollegeDB database does not exist"
+    fail "CollegeDB database not created"
 fi
 
 if [ "$DB_EXISTS" != "CollegeDB" ]; then
-    echo "Cannot continue."
+    echo ""
+    echo "FINAL SCORE: $PASS / $TOTAL"
     exit 1
 fi
 
-# Test 2: Student table exists
+
+# --------------------------------------------------
+# TEST 2 - Student Table
+# --------------------------------------------------
+
 TABLE_EXISTS=$($MYSQL -e "
 SELECT TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
@@ -48,43 +57,75 @@ AND TABLE_NAME='Student';
 ")
 
 if [ "$TABLE_EXISTS" = "Student" ]; then
-    pass "Student table exists"
+    pass "Student table created"
 else
-    fail "Student table does not exist"
+    fail "Student table not created"
+    echo ""
+    echo "FINAL SCORE: $PASS / $TOTAL"
     exit 1
 fi
 
-# Test 3: StudentID INT
-TYPE=$($MYSQL -e "
-SELECT DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentID';
-")
 
-if [ "$TYPE" = "int" ]; then
+# Function: Get column type
+get_type() {
+    $MYSQL -e "
+    SELECT DATA_TYPE
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='CollegeDB'
+    AND TABLE_NAME='Student'
+    AND COLUMN_NAME='$1';
+    "
+}
+
+# Function: Get column length
+get_length() {
+    $MYSQL -e "
+    SELECT CHARACTER_MAXIMUM_LENGTH
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='CollegeDB'
+    AND TABLE_NAME='Student'
+    AND COLUMN_NAME='$1';
+    "
+}
+
+# Function: Get NULL status
+get_nullable() {
+    $MYSQL -e "
+    SELECT IS_NULLABLE
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='CollegeDB'
+    AND TABLE_NAME='Student'
+    AND COLUMN_NAME='$1';
+    "
+}
+
+
+# --------------------------------------------------
+# TEST 3 - StudentID INT
+# --------------------------------------------------
+
+if [ "$(get_type StudentID)" = "int" ]; then
     pass "StudentID is INT"
 else
     fail "StudentID is not INT"
 fi
 
-# Test 4: StudentID NOT NULL
-NULLABLE=$($MYSQL -e "
-SELECT IS_NULLABLE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentID';
-")
 
-if [ "$NULLABLE" = "NO" ]; then
+# --------------------------------------------------
+# TEST 4 - StudentID NOT NULL
+# --------------------------------------------------
+
+if [ "$(get_nullable StudentID)" = "NO" ]; then
     pass "StudentID is NOT NULL"
 else
-    fail "StudentID is nullable"
+    fail "StudentID is NULL allowed"
 fi
 
-# Test 5: StudentID PRIMARY KEY
+
+# --------------------------------------------------
+# TEST 5 - StudentID PRIMARY KEY
+# --------------------------------------------------
+
 PK=$($MYSQL -e "
 SELECT COLUMN_NAME
 FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
@@ -100,175 +141,143 @@ else
     fail "StudentID is not PRIMARY KEY"
 fi
 
-# Test 6: StudentName VARCHAR(20)
-TYPE=$($MYSQL -e "
-SELECT DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentName';
-")
 
-LENGTH=$($MYSQL -e "
-SELECT CHARACTER_MAXIMUM_LENGTH
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentName';
-")
+# --------------------------------------------------
+# TEST 6 - StudentName VARCHAR(20)
+# --------------------------------------------------
 
-if [ "$TYPE" = "varchar" ] && [ "$LENGTH" = "20" ]; then
+NAME_TYPE=$(get_type StudentName)
+NAME_LENGTH=$(get_length StudentName)
+
+if [ "$NAME_TYPE" = "varchar" ] && [ "$NAME_LENGTH" = "20" ]; then
     pass "StudentName is VARCHAR(20)"
 else
     fail "StudentName is not VARCHAR(20)"
 fi
 
-# Test 7: StudentName NOT NULL
-NULLABLE=$($MYSQL -e "
-SELECT IS_NULLABLE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentName';
-")
 
-if [ "$NULLABLE" = "NO" ]; then
+# --------------------------------------------------
+# TEST 7 - StudentName NOT NULL
+# --------------------------------------------------
+
+if [ "$(get_nullable StudentName)" = "NO" ]; then
     pass "StudentName is NOT NULL"
 else
-    fail "StudentName is nullable"
+    fail "StudentName is NULL allowed"
 fi
 
-# Test 8: StudentName UNIQUE
-UNIQUE_COUNT=$($MYSQL -e "
+
+# --------------------------------------------------
+# TEST 8 - StudentName UNIQUE
+# --------------------------------------------------
+
+UNIQUE_NAME=$($MYSQL -e "
 SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
-ON tc.CONSTRAINT_SCHEMA=ku.CONSTRAINT_SCHEMA
-AND tc.TABLE_NAME=ku.TABLE_NAME
-AND tc.CONSTRAINT_NAME=ku.CONSTRAINT_NAME
-WHERE tc.CONSTRAINT_SCHEMA='CollegeDB'
-AND tc.TABLE_NAME='Student'
-AND tc.CONSTRAINT_TYPE='UNIQUE'
-AND ku.COLUMN_NAME='StudentName';
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA='CollegeDB'
+AND TABLE_NAME='Student'
+AND COLUMN_NAME='StudentName'
+AND NON_UNIQUE=0
+AND INDEX_NAME <> 'PRIMARY';
 ")
 
-if [ "$UNIQUE_COUNT" -ge 1 ]; then
+if [ "$UNIQUE_NAME" -ge 1 ]; then
     pass "StudentName has UNIQUE constraint"
 else
     fail "StudentName does not have UNIQUE constraint"
 fi
 
-# Test 9: DOB DATE
-TYPE=$($MYSQL -e "
-SELECT DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='DOB';
-")
 
-if [ "$TYPE" = "date" ]; then
+# --------------------------------------------------
+# TEST 9 - DOB DATE
+# --------------------------------------------------
+
+if [ "$(get_type DOB)" = "date" ]; then
     pass "DOB is DATE"
 else
     fail "DOB is not DATE"
 fi
 
-# Test 10: DOB NOT NULL
-NULLABLE=$($MYSQL -e "
-SELECT IS_NULLABLE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='DOB';
-")
 
-if [ "$NULLABLE" = "NO" ]; then
+# --------------------------------------------------
+# TEST 10 - DOB NOT NULL
+# --------------------------------------------------
+
+if [ "$(get_nullable DOB)" = "NO" ]; then
     pass "DOB is NOT NULL"
 else
-    fail "DOB is nullable"
+    fail "DOB is NULL allowed"
 fi
 
-# Test 11: Gender VARCHAR(10)
-TYPE=$($MYSQL -e "
-SELECT DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='Gender';
-")
 
-LENGTH=$($MYSQL -e "
-SELECT CHARACTER_MAXIMUM_LENGTH
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='Gender';
-")
+# --------------------------------------------------
+# TEST 11 - Gender VARCHAR(10)
+# --------------------------------------------------
 
-if [ "$TYPE" = "varchar" ] && [ "$LENGTH" = "10" ]; then
+GENDER_TYPE=$(get_type Gender)
+GENDER_LENGTH=$(get_length Gender)
+
+if [ "$GENDER_TYPE" = "varchar" ] && [ "$GENDER_LENGTH" = "10" ]; then
     pass "Gender is VARCHAR(10)"
 else
     fail "Gender is not VARCHAR(10)"
 fi
 
-# Test 12: Gender NOT NULL
-NULLABLE=$($MYSQL -e "
-SELECT IS_NULLABLE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='Gender';
-")
 
-if [ "$NULLABLE" = "NO" ]; then
+# --------------------------------------------------
+# TEST 12 - Gender NOT NULL
+# --------------------------------------------------
+
+if [ "$(get_nullable Gender)" = "NO" ]; then
     pass "Gender is NOT NULL"
 else
-    fail "Gender is nullable"
+    fail "Gender is NULL allowed"
 fi
 
-# Test 13: DepartmentID INT
-TYPE=$($MYSQL -e "
-SELECT DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='DepartmentID';
-")
 
-if [ "$TYPE" = "int" ]; then
+# --------------------------------------------------
+# TEST 13 - DepartmentID INT
+# --------------------------------------------------
+
+if [ "$(get_type DepartmentID)" = "int" ]; then
     pass "DepartmentID is INT"
 else
     fail "DepartmentID is not INT"
 fi
 
-# Test 14: DepartmentID NOT NULL
-NULLABLE=$($MYSQL -e "
-SELECT IS_NULLABLE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='DepartmentID';
-")
 
-if [ "$NULLABLE" = "NO" ]; then
+# --------------------------------------------------
+# TEST 14 - DepartmentID NOT NULL
+# --------------------------------------------------
+
+if [ "$(get_nullable DepartmentID)" = "NO" ]; then
     pass "DepartmentID is NOT NULL"
 else
-    fail "DepartmentID is nullable"
+    fail "DepartmentID is NULL allowed"
 fi
+
+
+# --------------------------------------------------
+# FINAL RESULT
+# --------------------------------------------------
+
+FAILED=$((TOTAL - PASS))
 
 echo ""
 echo "=========================================="
-echo " AUTOGRADING SUMMARY"
+echo "        AUTO GRADING RESULT"
 echo "=========================================="
-echo "Passed: $PASS"
-echo "Failed: $FAIL"
-echo "Total : $((PASS + FAIL))"
+echo "Total Tests : $TOTAL"
+echo "Passed      : $PASS"
+echo "Failed      : $FAILED"
+echo "Score       : $PASS / $TOTAL"
 echo "=========================================="
 
-if [ "$FAIL" -eq 0 ]; then
-    echo "ALL TEST CASES PASSED"
+if [ "$FAILED" -eq 0 ]; then
+    echo "🎉 ALL TEST CASES PASSED"
     exit 0
 else
-    echo "SOME TEST CASES FAILED"
+    echo "❌ SOME TEST CASES FAILED"
     exit 1
 fi
+
