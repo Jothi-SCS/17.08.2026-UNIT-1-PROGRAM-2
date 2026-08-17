@@ -1,0 +1,139 @@
+name: Student Table Auto Grading
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+
+        env:
+          MYSQL_ROOT_PASSWORD: root
+
+        ports:
+          - 3306:3306
+
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+
+      # Step 1: Checkout Student Repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Install MySQL Client
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
+
+      # Step 3: Check Required Files
+      - name: Check Required Files
+        run: |
+          echo "Checking required files..."
+          test -f solution.sql
+          test -f tests/test.sh
+          echo "Required files found."
+
+      # Step 4: Wait for MySQL
+      - name: Wait for MySQL
+        run: |
+          echo "Waiting for MySQL..."
+
+          for i in {1..30}
+          do
+            if mysqladmin ping \
+              -h 127.0.0.1 \
+              -P 3306 \
+              -u root \
+              -proot \
+              --protocol=tcp \
+              --silent
+            then
+              echo "MySQL is ready!"
+              exit 0
+            fi
+
+            echo "MySQL is not ready. Waiting..."
+            sleep 2
+          done
+
+          echo "MySQL failed to start."
+          exit 1
+
+      # Step 5: Execute Student SQL
+      - name: Execute Student SQL
+        run: |
+          echo "======================================"
+          echo "Executing Student SQL Program"
+          echo "======================================"
+
+          mysql \
+            -h 127.0.0.1 \
+            -P 3306 \
+            -u root \
+            -proot \
+            --protocol=tcp \
+            < solution.sql
+
+          echo "SQL program executed successfully."
+
+      # Step 6: Verify Database
+      - name: Verify CollegeDB
+        run: |
+          echo "======================================"
+          echo "Checking CollegeDB"
+          echo "======================================"
+
+          mysql \
+            -h 127.0.0.1 \
+            -P 3306 \
+            -u root \
+            -proot \
+            --protocol=tcp \
+            -e "SHOW DATABASES;"
+
+      # Step 7: Verify Student Table
+      - name: Verify Student Table
+        run: |
+          echo "======================================"
+          echo "Checking Student Table"
+          echo "======================================"
+
+          mysql \
+            -h 127.0.0.1 \
+            -P 3306 \
+            -u root \
+            -proot \
+            --protocol=tcp \
+            -e "USE CollegeDB; SHOW TABLES; DESCRIBE Student;"
+
+      # Step 8: Run Test Cases
+      - name: Run Auto Grading Tests
+        run: |
+          echo "======================================"
+          echo "Running Auto Grading Tests"
+          echo "======================================"
+
+          chmod +x tests/test.sh
+
+          ./tests/test.sh
+
+      # Step 9: Final Message
+      - name: Grading Completed
+        if: success()
+        run: |
+          echo "======================================"
+          echo "🎉 ALL TESTS PASSED"
+          echo "🎉 ASSIGNMENT COMPLETED SUCCESSFULLY"
+          echo "======================================"
